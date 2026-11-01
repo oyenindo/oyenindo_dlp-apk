@@ -5,7 +5,7 @@ package.domain = org.oyenindo
 source.dir = .
 source.include_exts = py,png,jpg,kv,atlas
 version = 1.0
-requirements = python3,kivy==2.3.0,yt-dlp,certifi,openssl,requests,urllib3,idna,charset-normalizer,websockets,mutagen
+requirements = python3==3.11.5,hostpython3==3.11.5,kivy==2.3.0,yt-dlp,certifi,openssl
 orientation = portrait
 fullscreen = 0
 
