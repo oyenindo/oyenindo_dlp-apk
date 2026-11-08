@@ -8,6 +8,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-22.04
+
     steps:
       - uses: actions/checkout@v4
 
@@ -15,7 +16,7 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: "17"
 
       - name: Verify Java
         run: |
@@ -38,13 +39,57 @@ jobs:
           python -m pip install --upgrade pip
           pip install buildozer cython==0.29.36 virtualenv
 
-      - name: Cache Buildozer
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.buildozer
-            .buildozer
-          key: buildozer-${{ hashFiles('buildozer.spec') }}
+      # Download/prepare p4a first, then apply its upstream pip-venv fix.
+      - name: Prepare python-for-android pip fix
+        run: |
+          buildozer android p4a -- --help
+
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path(
+              ".buildozer/android/platform/python-for-android/"
+              "pythonforandroid/build.py"
+          )
+          source = path.read_text()
+
+          old_venv = "shprint(host_python, '-m', 'venv', 'venv')"
+          if source.count(old_venv) != 1:
+              raise SystemExit(
+                  f"Expected one venv creation command in {path}; "
+                  "p4a source may have changed."
+              )
+
+          source = source.replace(
+              old_venv,
+              "shprint(host_python, '-m', 'venv', '--clear', 'venv')",
+              1,
+          )
+
+          start_marker = "        # Prepare base environment and upgrade pip:\n"
+          end_marker = (
+              "        # Install Cython in case modules need it to build:\n"
+          )
+
+          if source.count(start_marker) != 1 or source.count(end_marker) != 1:
+              raise SystemExit(
+                  f"Could not find the expected pip-upgrade block in {path}; "
+                  "p4a source may have changed."
+              )
+
+          start = source.index(start_marker)
+          end = source.index(end_marker, start)
+
+          replacement = (
+              "        # Prepare the base environment without self-upgrading pip.\n"
+              "        base_env = dict(copy.copy(os.environ))\n"
+              "        base_env[\"PYTHONPATH\"] = ctx.get_site_packages_dir(arch)\n\n"
+          )
+
+          source = source[:start] + replacement + source[end:]
+          path.write_text(source)
+          print(f"Applied pip venv fix to {path}")
+          PY
 
       - name: Build APK
         run: buildozer -v android debug
